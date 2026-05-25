@@ -73,28 +73,45 @@ const mockEmails = [
  */
 class GmailService {
     constructor() {
-        // Initialize Google OAuth2 client from env credentials (if provided)
+        // Run initial configuration check
+        this.getOAuth2Client();
+    }
+
+    /**
+     * Dynamically retrieve or initialize the Google OAuth2 client
+     */
+    getOAuth2Client() {
         const clientId = process.env.GOOGLE_CLIENT_ID;
         const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
         const redirectUri = process.env.GOOGLE_REDIRECT_URI;
 
-        if (clientId && clientSecret) {
-            this.oauth2Client = new google.auth.OAuth2(
-                clientId,
-                clientSecret,
-                redirectUri
-            );
+        const isConfigured = 
+            clientId && clientId !== "your_google_client_id_here" && 
+            clientSecret && clientSecret !== "your_google_client_secret_here";
+
+        if (isConfigured) {
+            if (!this.oauth2Client) {
+                console.log("✅ Google API Credentials loaded successfully. Activating live client.");
+                this.oauth2Client = new google.auth.OAuth2(
+                    clientId,
+                    clientSecret,
+                    redirectUri
+                );
+            }
         } else {
-            console.log("⚠️ Google API Credentials not fully configured in .env. Running in mock mode.");
+            this.oauth2Client = null;
         }
+
+        return this.oauth2Client;
     }
 
     /**
      * Get authorization URL to redirect user for Google sign-in
      */
     getAuthUrl() {
-        if (!this.oauth2Client) {
-            throw new Error("OAuth2 client is not configured.");
+        const client = this.getOAuth2Client();
+        if (!client) {
+            throw new Error("OAuth2 client is not configured. Please supply valid GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.");
         }
         
         const scopes = [
@@ -102,7 +119,7 @@ class GmailService {
             "https://www.googleapis.com/auth/gmail.modify"
         ];
 
-        return this.oauth2Client.generateAuthUrl({
+        return client.generateAuthUrl({
             access_type: "offline",
             scope: scopes,
             prompt: "consent"
@@ -113,10 +130,11 @@ class GmailService {
      * Retrieve access and refresh tokens using the authorization code from callback
      */
     async getTokens(code) {
-        if (!this.oauth2Client) {
-            throw new Error("OAuth2 client is not configured.");
+        const client = this.getOAuth2Client();
+        if (!client) {
+            throw new Error("OAuth2 client is not configured. Please supply valid GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.");
         }
-        const { tokens } = await this.oauth2Client.getToken(code);
+        const { tokens } = await client.getToken(code);
         return tokens;
     }
 
@@ -124,8 +142,9 @@ class GmailService {
      * Fetch emails. Returns mock emails or fetches from active Gmail API if authorized.
      */
     async getEmails(accessToken = null) {
+        const client = this.getOAuth2Client();
         // If no credentials/token are supplied, return standard mock emails for a frictionless start
-        if (!this.oauth2Client || !accessToken) {
+        if (!client || !accessToken) {
             return mockEmails;
         }
 
